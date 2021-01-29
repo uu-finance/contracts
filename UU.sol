@@ -1277,11 +1277,11 @@ contract UUBaseMintable is UUBaseERC20, Configurable {
             require(lpts[i] != lpt, 'the lpt has already added');
             
         lpts.push(lpt);
-        _updateLptTWAP(lpt);
         _setConfig(_netValueIndexOfLPT_, lpt, nvi);
         _setConfig(_depositOfLPT_,       lpt, uint(depo));
         _setConfig(_swapOfLPT_,          lpt, uint(swap));
         _setConfig(_lptOfSwap_,          swap, uint(lpt));
+        _updateLptTWAP(lpt);
 
         emit AddLPT(lpt, swap, depo, nvi, gauge);
 	}
@@ -1465,9 +1465,9 @@ contract UUBaseClaimable is UUBaseMintable {
         if(gauge != address(0)) {
             _setConfig(_gaugeOfLPT_,     lpt, uint(gauge));
             tryAddReward(Gauge(gauge).crv_token());
-            address reward = Gauge(gauge).rewarded_token();
-            if(reward != address(0))
-                tryAddReward(reward);
+            //address reward = Gauge(gauge).rewarded_token();
+            //if(reward != address(0))
+            //    tryAddReward(reward);
         }
 	}
 
@@ -1632,12 +1632,9 @@ contract UUBaseClaimable is UUBaseMintable {
 contract UU is UUBaseClaimable {
 	function initialize(address governor_, address up_) public virtual initializer {
 		__UUBaseClaimable_init(governor_, up_);
-	}
-	
-	function initialize2() external governance {
 	    unlocked = 1;
 	}
-    
+	
     // Reserved storage space to allow for layout changes in the future.
     uint256[50] private ______gap;
 }
