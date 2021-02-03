@@ -1561,13 +1561,14 @@ contract UUBaseClaimable is UUBaseMintable {
         return claimed(address(-1), reward);
     }
     
-	function settleable(address lpt, uint j) virtual public view returns (address reward, uint vol, uint tip) {
+    // This function should be manually changed to "view" in the ABI
+	function settleable(address lpt, uint j) virtual public returns (address reward, uint vol, uint tip) {
         address gauge = address(getConfig(_gaugeOfLPT_, lpt));
         if(gauge == address(0))
             return (address(0), 0, 0);
         if(j == 0) {
             reward = Gauge(gauge).crv_token();
-            vol = Gauge(gauge).claimable_tokens(address(this));
+            vol = Gauge(gauge).claimable_tokens(address(this));         // compatible with 3Crv
         } else if(j == 1) {
             reward = Gauge(gauge).rewarded_token();
             vol = Gauge(gauge).claimable_reward(address(this));
@@ -1627,6 +1628,10 @@ contract UUBaseClaimable is UUBaseMintable {
     
     // Reserved storage space to allow for layout changes in the future.
     uint256[50] private ______gap;
+}
+
+interface IUU {
+	function settleable(address lpt, uint j) external view returns (address reward, uint vol, uint tip);
 }
 
 contract UU is UUBaseClaimable {
@@ -1920,7 +1925,7 @@ interface Gauge {
     function crv_token()                    external view returns (address);
     function rewarded_token()               external view returns (address);
     function reward_contract()              external view returns (address);
-    function claimable_tokens(address addr) external view returns (uint);
+    function claimable_tokens(address addr) external /*view*/ returns (uint);       // compatible with 3Crv
     function claimable_reward(address addr) external view returns (uint);
     function claimable_reward2(address addr) external view returns (uint);
     function balanceOf(address)             external view returns (uint);
