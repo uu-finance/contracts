@@ -1053,6 +1053,19 @@ contract UP is IERC20, ContextUpgradeSafe, Configurable {
         emit Transfer(_msgSender(), recipient, volume);
     }
     
+    modifier onlyUU {
+        require(_msgSender() == uu, 'Only be called by UU Token contract');
+        _;
+    }
+    
+    function emitApproval_(address owner, address spender, uint256 value) external onlyUU {
+        emit Approval(owner, spender, value);
+    }
+    
+    function emitTransfer_(address from, address to, uint256 value) external onlyUU {
+        emit Transfer(from, to, value);
+    }
+    
     // Reserved storage space to allow for layout changes in the future.
     uint256[50] private ______gap;
 }
@@ -1083,52 +1096,151 @@ contract UUBaseERC20 is IERC20, ContextUpgradeSafe {
 		up = up_;
 	}
 	
+    function isUuAsUp(address account) virtual public view returns (bool) {
+        return OpenZeppelinUpgradesAddress.isContract(account);
+    }
+    
     function totalSupply() public view virtual override returns (uint256) {
-        return up2uu(upTotalSupply());
+        if(isUuAsUp(_msgSender()))
+            return upTotalSupply();
+        else
+            return uuTotalSupply();
     }
 
     function balanceOf(address account) external view virtual override returns (uint256) {
-        return up2uu(upBalanceOf(account));
+        if(isUuAsUp(_msgSender()))
+            return upBalanceOf(account);
+        else
+            return uuBalanceOf(account);
     }
 
     function allowance(address owner, address spender) public view virtual override returns (uint256) {
-        return up2uu(upAllowance[owner][spender]);
+        if(isUuAsUp(_msgSender()))
+            return upAllowance[owner][spender];
+        else
+            return uuAllowance(owner, spender);
     }
     
     function permit(address owner, address spender, uint amount, uint deadline, uint8 v, bytes32 r, bytes32 s) external virtual {
-        _upPermit(name, address(this), owner, spender, uu2up(amount), deadline, v, r, s);
-        emit Approval(owner, spender, amount);
+        //if(isUuAsUp(_msgSender())) {
+            _upPermit(name, up, owner, spender, amount, deadline, v, r, s);
+            UP(up).emitApproval_(owner, spender, amount);
+            emit Approval(owner, spender, (amount == uint(-1)) ? uint(-1) : up2uu(amount));
+        //} else
+        //    return uuPermit(owner, spender, amount, deadline, v, r, s);
     }
 
     function approve(address spender, uint256 amount) public virtual override returns (bool success) {
-        success = _upApprove(_msgSender(), spender, uu2up(amount));
-        emit Approval(_msgSender(), spender, amount);
+        //if(isUuAsUp(_msgSender())) {
+            success = _upApprove(_msgSender(), spender, amount);
+            UP(up).emitApproval_(_msgSender(), spender, amount);
+            emit Approval(_msgSender(), spender, (amount == uint(-1)) ? uint(-1) : up2uu(amount));
+        //} else
+        //    return uuApprove(spender, amount);
     }
 
-    function increaseAllowance(address spender, uint256 increment) external virtual returns (bool) {
-        return approve(spender, allowance(_msgSender(), spender).add(increment));
+    function increaseAllowance(address spender, uint256 increment) external virtual returns (bool success) {
+        if(isUuAsUp(_msgSender())) {
+            uint amount = upAllowance[_msgSender()][spender].add(increment);
+            success = _upApprove(_msgSender(), spender, amount);
+            UP(up).emitApproval_(_msgSender(), spender, amount);
+            emit Approval(_msgSender(), spender, up2uu(amount));
+        } else
+            return uuIncreaseAllowance(spender, increment);
     }
 
-    function decreaseAllowance(address spender, uint256 decrement) external virtual returns (bool) {
-        return approve(spender, allowance(_msgSender(), spender).sub(decrement, "UU: decreased allowance below zero"));
+    function decreaseAllowance(address spender, uint256 decrement) external virtual returns (bool success) {
+        if(isUuAsUp(_msgSender())) {
+            uint amount = upAllowance[_msgSender()][spender].sub(decrement, "UU: decreased allowance below zero");
+            success = _upApprove(_msgSender(), spender, amount);
+            UP(up).emitApproval_(_msgSender(), spender, amount);
+            emit Approval(_msgSender(), spender, up2uu(amount));
+        } else
+            return uuDecreaseAllowance(spender, decrement);
     }
 
     function transferFrom(address sender, address recipient, uint256 amount) external virtual override returns (bool success) {
-        success = _upTransferFrom(_msgSender(), sender, recipient, uu2up(amount));
-        emit Transfer(sender, recipient, amount);
+        if(isUuAsUp(_msgSender())) {
+            require(amount <= upBalanceOf(sender), 'upBalance not enough');
+            success = _upTransferFrom(_msgSender(), sender, recipient, amount);
+            UP(up).emitTransfer_(sender, recipient, amount);
+            emit Transfer(sender, recipient, up2uu(amount));
+        } else
+            return uuTransferFrom(sender, recipient, amount);
     }
 
     function transfer(address recipient, uint256 amount) external virtual override returns (bool success) {
-        success = _upTransfer(_msgSender(), recipient, uu2up(amount));
+        if(isUuAsUp(_msgSender())) {
+            success = _upTransfer(_msgSender(), recipient, amount);
+            UP(up).emitTransfer_(_msgSender(), recipient, amount);
+            emit Transfer(_msgSender(), recipient, up2uu(amount));
+        } else
+            return uuTransfer(recipient, amount);
+    }
+    
+    function uuTotalSupply() public view virtual returns (uint256) {
+        return up2uu(upTotalSupply());
+    }
+
+    function uuBalanceOf(address account) public view virtual returns (uint256) {
+        return up2uu(upBalanceOf(account));
+    }
+
+    function uuAllowance(address owner, address spender) public view virtual returns (uint256 amount) {
+        amount = upAllowance[owner][spender];
+        amount = (amount == uint(-1)) ? uint(-1) : up2uu(amount);
+    }
+    
+    function uuPermit(address owner, address spender, uint amount, uint deadline, uint8 v, bytes32 r, bytes32 s) public virtual {
+        uint volume = amount == uint(-1) ? uint(-1) : uu2upCeil(amount);
+        _upPermit(name, address(this), owner, spender, volume, deadline, v, r, s);
+        UP(up).emitApproval_(owner, spender, volume);
+        emit Approval(owner, spender, amount);
+    }
+
+    function uuApprove(address spender, uint256 amount) public virtual returns (bool success) {
+        uint volume = amount == uint(-1) ? uint(-1) : uu2upCeil(amount);
+        success = _upApprove(_msgSender(), spender, volume);
+        UP(up).emitApproval_(_msgSender(), spender, volume);
+        emit Approval(_msgSender(), spender, amount);
+    }
+
+    function uuIncreaseAllowance(address spender, uint256 increment) public virtual returns (bool) {
+        return uuApprove(spender, allowance(_msgSender(), spender).add(increment));
+    }
+
+    function uuDecreaseAllowance(address spender, uint256 decrement) public virtual returns (bool) {
+        return uuApprove(spender, allowance(_msgSender(), spender).sub(decrement, "UU: decreased allowance below zero"));
+    }
+
+    function uuTransferFrom(address sender, address recipient, uint256 amount) public virtual returns (bool success) {
+        uint volume = uu2up(amount);
+        success = _upTransferFrom(_msgSender(), sender, recipient, volume);
+        UP(up).emitTransfer_(sender, recipient, volume);
+        emit Transfer(sender, recipient, amount);
+    }
+
+    function uuTransfer(address recipient, uint256 amount) public virtual returns (bool success) {
+        uint volume = uu2up(amount);
+        success = _upTransfer(_msgSender(), recipient, volume);
+        UP(up).emitTransfer_(_msgSender(), recipient, volume);
         emit Transfer(_msgSender(), recipient, amount);
     }
     
     function uu2up(uint256 amount) public view virtual returns (uint256) {
         return amount.mul(uint256(10)**decimals).div(upPrice);
     }
+    
+    function uu2upCeil(uint256 amount) public view virtual returns (uint256) {
+        return uu2up(amount).add(1);
+    }
 
     function up2uu(uint256 vol) public view virtual returns (uint256) {
         return vol.mul(upPrice).div(uint256(10)**decimals);
+    }
+    
+    function up2uuCeil(uint256 vol) public view virtual returns (uint256) {
+        return up2uu(vol).add(1);
     }
 
     function upTotalSupply() public view virtual returns (uint256) {
@@ -1232,6 +1344,7 @@ contract UUBaseERC20 is IERC20, ContextUpgradeSafe {
 contract UUBaseMintable is UUBaseERC20, Configurable {
     using TransferHelper for address;
     
+    bytes32 internal constant _isUuAsUu_            = 'isUuAsUu';
     bytes32 internal constant _netValueUnit_        = 'netValueUnit';
     bytes32 internal constant _netValueIndexOfLPT_  = 'netValueIndexOfLPT';
     bytes32 internal constant _depositOfLPT_        = 'depositOfLPT';
@@ -1268,6 +1381,17 @@ contract UUBaseMintable is UUBaseERC20, Configurable {
 		upPriceFactor = 1 ether;
 		unlocked = 1;
 	}
+    
+    function isUuAsUp(address account) virtual override public view returns (bool) {
+        if(getConfig(_isUuAsUu_, account) != 0)
+            return false;
+        else
+            return super.isUuAsUp(account);
+    }
+    
+    function setUuAsUp(address account, bool isUuAsUp_) virtual external governance {
+        _setConfig(_isUuAsUu_, account, isUuAsUp_ ? 0 : 1);
+    }
     
 	function addLPT(address lpt, address swap, address depo, uint nvi, address gauge) virtual public governance {
         IERC20(lpt).totalSupply();
